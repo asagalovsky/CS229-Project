@@ -2,6 +2,7 @@
 rm(list=ls())
 
 # Load libraries
+library(plyr)
 library(raster)
 library(rgdal)
 library(sp)
@@ -9,7 +10,7 @@ library(sp)
 #---------------------------------------------------------------------
 
 # Set working directory
-setwd('~/Documents/Stanford/CS229/CS229-Project/Data/Chicago/')
+setwd('~/Documents/Stanford/CS229/CS229-Project/RawData/Chicago/')
 
 # Load data
 crimes <- read.csv('Crimes_-_2001_to_present.csv', header=T, stringsAsFactors=F)
@@ -31,9 +32,11 @@ crimes <- SpatialPointsDataFrame(coords=crimes[, c('longitude', 'latitude')],
 
 # Spatial overlay to identify Census polygon in which each coordinate falls
 crimes_tract <- over(x=crimes, y=tract)
-crimes_tract <- data.frame(tract=crimes_tract$tractce10, tract_name=crimes_tract$namelsad10,
-                           latitude=crimes_tract$intptlat10, longitude=crimes_tract$intptlon10)
+crimes_tract <- data.frame(tract_name=crimes_tract$namelsad10)
 
 # Add Census tract data to crime dataset
 result <- data.frame(crimes@data, crimes_tract)
-write.csv(result, 'Chicago_clean.csv')
+result <- count(result, c('tract_name'))
+result$city <- rep('Chicago', nrow(result))
+
+write.csv(result, '~/Documents/Stanford/CS229/CS229-Project/CleanData/Chicago_clean.csv')

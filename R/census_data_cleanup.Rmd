@@ -1,0 +1,118 @@
+---
+title: "Untitled"
+author: "Aly Kane and Ariel Ssagalovsky"
+date: "11/17/2016"
+output: pdf_document
+---
+rm(list=ls())
+
+## Create functions used in script 
+```{r}
+substrRight <- function(x, n) {
+  substr(x, nchar(x)-n+1, nchar(x))
+}
+
+cleanString = function(x){
+  if (grepl("r", x)) {
+    y = sub('r.*', '', x)
+    substr(y,1,nchar(y)-1)
+  }
+  else {
+    x
+  }
+}
+
+getCounty = function(x){
+  y = unlist(strsplit(x, " "))
+  y[4]
+}
+```
+
+## Import Census Data 
+```{r}
+setwd("/Users/alysonkane/desktop/cs229/census_aly")
+
+censusChicago <- read.csv('Chicago/DEC_10_SF1_SF1DP1_with_ann.csv', header=T, stringsAsFactors=F)
+censusDC <- read.csv('DC/DEC_10_SF1_SF1DP1_with_ann.csv', header=T, stringsAsFactors=F)
+censusDetroit <- read.csv('Detroit/DEC_10_SF1_SF1DP1_with_ann.csv', header=T, stringsAsFactors=F)
+censusNYC <- read.csv('NYC/DEC_10_SF1_SF1DP1_with_ann.csv', header=T, stringsAsFactors=F)
+censusPhilly <- read.csv('Philadelphia/DEC_10_SF1_SF1DP1_with_ann.csv', header=T, stringsAsFactors=F)
+censusSF <- read.csv('SF/DEC_10_SF1_SF1DP1_with_ann.csv', header=T, stringsAsFactors=F)
+
+## format headers 
+names(censusChicago) <- censusChicago[1,]
+censusChicago <- censusChicago[-1,]
+
+names(censusDC) <- censusDC[1,]
+censusDC <- censusDC[-1,]
+
+names(censusDetroit) <- censusDetroit[1,]
+censusDetroit <- censusDetroit[-1,]
+
+names(censusNYC) <- censusNYC[1,]
+censusNYC <- censusNYC[-1,]
+
+names(censusPhilly) <- censusPhilly[1,]
+censusPhilly <- censusPhilly[-1,]
+
+names(censusSF) <- censusSF[1,]
+censusSF <- censusSF[-1,]
+```
+
+```{r}
+## KEEP RELEVANT FIELDS
+fields = c(2, 4, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 42, 45, 47, 49, 
+           51, 53, 55, 105, 203, 205, 207, 209, 211, 213, 217, 305, 307, 309, 315, 319, 321, 323, 325, 
+           329, 333, 335, 336, 340, 345, 355, 365)
+
+chicago = subset(censusChicago, select = fields)
+dc = subset(censusDC, select = fields)
+detroit = subset(censusDetroit, select = fields)
+nyc = subset(censusNYC, select = c(fields,3))
+philly = subset(censusPhilly, select = fields)
+sf = subset(censusSF, select = fields)
+
+## Add label for city 
+chicago$city = rep("Chicago",nrow(chicago))
+dc$city = rep("DC",nrow(dc))
+detroit$city = rep("Detroit",nrow(detroit))
+philly$city = rep("Philadelphia",nrow(philly))
+sf$city = rep("SanFrancisco",nrow(sf))
+
+## NYC city label --> borough
+nyc$city = rep("",nrow(nyc))
+for (i in 1:length(nyc$city)) {
+  nyc$city[i] = getCounty(nyc$Geography[i])
+}
+
+nyc$city = ifelse(nyc$city == "Kings", "Brooklyn",ifelse(nyc$city == "New", "Manhattan",ifelse(nyc$city == "Richmond", "StatenIsland", nyc$city)))
+
+nyc <- nyc[, -which(colnames(nyc) == 'Geography')]
+
+census = rbind(chicago,dc,detroit,philly,sf,nyc)
+
+## FORMAT CENSUS TRACT 
+census$CENSUS_TRACT <- substrRight(census$Id2, 5)
+
+## CLEAN POPULATION NUMBER FIELDS 
+# run on relevant fields 
+
+### LIST OF FIELDS: 2, 48
+xnew = rep(0,nrow(census))
+for (i in 1:nrow(census)){
+  xnew[i] = cleanString(census[i,2])
+}
+census[,2] = xnew
+
+xnew = rep(0,nrow(census))
+for (i in 1:nrow(census)){
+  xnew[i] = cleanString(census[i,48])
+}
+census[,48] = xnew
+
+temp <- census[,1:(ncol(census)-2)]
+census_clean <- data.frame(apply(temp, 2, as.numeric))
+census_total <- data.frame(census_clean, census[,(ncol(census)-1):ncol(census)])
+
+write.csv(census_total, "census_total.csv")
+```

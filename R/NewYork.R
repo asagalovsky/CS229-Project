@@ -2,6 +2,7 @@
 rm(list=ls())
 
 # Load libraries
+library(plyr)
 library(raster)
 library(rgdal)
 library(sp)
@@ -16,7 +17,7 @@ substrRight <- function(x, n) {
 #---------------------------------------------------------------------
 
 # Set working directory
-setwd('~/Documents/Stanford/CS229/CS229-Project/Data/NewYork/')
+setwd('~/Documents/Stanford/CS229/CS229-Project/RawData/NewYork/')
 
 # Load data
 crimes <- read.csv('NYPD_Complaint_Data_Historic_2010.csv', header=T, stringsAsFactors=F)
@@ -85,24 +86,19 @@ crimes_STNI <- SpatialPointsDataFrame(coords=crimes_STNI[, c('longitude', 'latit
 
 # Spatial overlay to identify Census polygon in which each coordinate falls
 crimes_tract_BRNX <- over(x=crimes_BRNX, y=tract_BRNX)
-crimes_tract_BRNX <- data.frame(tract=crimes_tract_BRNX$tractce10, tract_name=crimes_tract_BRNX$namelsad10,
-                           latitude=crimes_tract_BRNX$intptlat10, longitude=crimes_tract_BRNX$intptlon10)
+crimes_tract_BRNX <- data.frame(tract_name=crimes_tract_BRNX$namelsad10)
 
 crimes_tract_BKLN <- over(x=crimes_BKLN, y=tract_BKLN)
-crimes_tract_BKLN <- data.frame(tract=crimes_tract_BKLN$tractce10, tract_name=crimes_tract_BKLN$namelsad10,
-                                latitude=crimes_tract_BKLN$intptlat10, longitude=crimes_tract_BKLN$intptlon10)
+crimes_tract_BKLN <- data.frame(tract_name=crimes_tract_BKLN$namelsad10)
 
 crimes_tract_MHTN <- over(x=crimes_MHTN, y=tract_MHTN)
-crimes_tract_MHTN <- data.frame(tract=crimes_tract_MHTN$tractce10, tract_name=crimes_tract_MHTN$namelsad10,
-                                latitude=crimes_tract_MHTN$intptlat10, longitude=crimes_tract_MHTN$intptlon10)
+crimes_tract_MHTN <- data.frame(tract_name=crimes_tract_MHTN$namelsad10)
 
 crimes_tract_QNS  <- over(x=crimes_QNS, y=tract_QNS)
-crimes_tract_QNS  <- data.frame(tract=crimes_tract_QNS$tractce10, tract_name=crimes_tract_QNS$namelsad10,
-                                latitude=crimes_tract_QNS$intptlat10, longitude=crimes_tract_QNS$intptlon10)
+crimes_tract_QNS  <- data.frame(tract_name=crimes_tract_QNS$namelsad10)
 
 crimes_tract_STNI <- over(x=crimes_STNI, y=tract_STNI)
-crimes_tract_STNI <- data.frame(tract=crimes_tract_STNI$tractce10, tract_name=crimes_tract_STNI$namelsad10,
-                                latitude=crimes_tract_STNI$intptlat10, longitude=crimes_tract_STNI$intptlon10)
+crimes_tract_STNI <- data.frame(tract_name=crimes_tract_STNI$namelsad10)
 
 # Add Census tract_MHTN data to crime dataset
 result_BRNX <- data.frame(crimes_BRNX@data, crimes_tract_BRNX)
@@ -111,7 +107,18 @@ result_MHTN <- data.frame(crimes_MHTN@data, crimes_tract_MHTN)
 result_QNS  <- data.frame(crimes_QNS@data,  crimes_tract_QNS)
 result_STNI <- data.frame(crimes_STNI@data, crimes_tract_STNI)
 
-# Stack individual dataframes into single result
-result <- data.frame(rbind(result_BRNX, result_BKLN, result_MHTN, result_QNS, result_STNI))
-write.csv(result, 'NewYork_clean.csv')
+result_BRNX <- count(result_BRNX, c('tract_name'))
+result_BKLN <- count(result_BKLN, c('tract_name'))
+result_MHTN <- count(result_MHTN, c('tract_name'))
+result_QNS  <- count(result_QNS, c('tract_name'))
+result_STNI <- count(result_STNI, c('tract_name'))
 
+result_BRNX$city <- rep('Bronx', nrow(result_BRNX))
+result_BKLN$city <- rep('Brooklyn', nrow(result_BKLN))
+result_MHTN$city <- rep('Manhattan', nrow(result_MHTN))
+result_QNS$city  <- rep('Queens', nrow(result_QNS))
+result_STNI$city <- rep('StatenIsland', nrow(result_STNI))
+
+result <- data.frame(rbind(result_BRNX, result_BKLN, result_MHTN, result_QNS, result_STNI))
+
+write.csv(result, '~/Documents/Stanford/CS229/CS229-Project/CleanData/NewYork_clean.csv')
