@@ -1,10 +1,16 @@
 # Clear all
 rm(list=ls())
 
+# Load libraries
+library(glmnet)
+library(leaps)
+library(MASS)
+
 #---------------------------------------------------------------------
 
 # Set working directory
 setwd('~/Documents/Stanford/CS229/CS229-Project/Merge/')
+# setwd("/Users/alysonkane/desktop/cs229/census_aly")
 
 # Import datasets
 crimes <- read.csv('Aggregated_Crimes.csv', header=T, stringsAsFactors=F)
@@ -43,33 +49,198 @@ merged$logResponse <- log(merged$Response)
 
 ## Data Visualization
 
-par(mfrow=c(1,2))
-hist(merged$Response,xlim=c(0,1),breaks=10200)
-hist(merged$logResponse,breaks=100)
+setwd('~/Documents/Stanford/CS229/CS229-Project/Visualizations/')
+
+jpeg('ResponseHistogram.jpg')
+hist(merged$Response,xlim=c(0,1),breaks=10000, xlab='Nominal Rate', main='Crime Rate')
+dev.off()
+
+jpeg('LogResponseHistogram.jpg')
+hist(merged$logResponse,breaks=100, xlab='Log Rate', main='Log Crime Rate')
+dev.off()
 
 #---------------------------------------------------------------------
 
-## Modeling/Prediction
+## Modeling/Prediction - Formatting data
 
 # Center and scale data
 cols_to_center <- which(!names(merged) %in% c('City','Response','logResponse'))
 merged[,cols_to_center] <- scale(merged[,cols_to_center], center=T, scale=T)
 
+## create dataset with Response variable and logResponse variable
+mergedLog <- merged[,-which(names(merged) == 'Response')]
+mergedResponse <- merged[,-which(names(merged) == 'logResponse')]
+
 # Test/train split
-trainIndex <- sample(1:nrow(merged), 0.8*nrow(merged))
-train <- merged[trainIndex, ]
-test <- merged[-trainIndex, ]
+trainIndex <- sample(1:nrow(merged), 0.7*nrow(merged))
+train <- mergedLog[trainIndex, ]
+test <- mergedLog[-trainIndex, ]
 
-# SUPERVISED
+trainR <- mergedResponse[trainIndex, ]
+testR <- mergedResponse[-trainIndex, ]
 
-# Subset selection
+#---------------------------------------------------------------------
+
+## SUPERVISED
+## Linear models: OLS, Ridge, Lasso, Elastic Net
+
+## (1) OLS 
+lm.model <- lm(logResponse ~ ., data=train, na.action = na.omit)
+
+# Calculate RMSE
+lm.predict <- predict(lm.model, newdata = test)
+lm.mse <- mean(na.omit(test$logResponse - lm.predict)^2)
+lm.rmse <- sqrt(lm.mse)
+sprintf("Baseline prediction error is: %f",lm.rmse)
+
+# Diagnostic plots
+# plot(lm.model)
+
+## (2) Poisson GLM to Response 
+glm.model <- glm(Response ~ ., data = trainR, family=poisson, na.action = na.omit)
+glm.predict <- predict(glm.model, newdata = testR)
+
+# Calculate RMSE
+glm.mse <- mean(na.omit(testR$Response - glm.predict)^2)
+glm.rmse <- sqrt(glm.mse)
+sprintf("Poisson prediction error is: %f",glm.rmse)
+
+# note: RMSE is much higher for poisson GLM.  Because of outliers (max is ~400%), model is predicting 
+# negative numbers for smaller percentages.  This doesn't make sense, so we should continue to use log(Response).
+
+## (3) Ridge, Lasso, Elastic Net
+
+# Format Training Data
+design <- model.matrix(~., mergedLog)
+sampleInd <- sample(1:nrow(design), 0.7*nrow(design))
+
+# Remove response and intercept variables 
+Design <- design[,-which(colnames(design) %in% c('(Intercept)', 'logResponse'))]
+Response <- design[,which(colnames(design) == 'logResponse')]
+
+xTrain <- Design[sampleInd,]
+xTest <- Design[-sampleInd,]
+yTrain <- Response[sampleInd]
+yTest <- Response[-sampleInd]
+
+# Run penalized models 
+lm.ridge <- glmnet(xTrain, yTrain, alpha = 0)
+lm.lasso <- glmnet(xTrain, yTrain, alpha = 1)
+lm.elasticnet <- glmnet(xTrain, yTrain, alpha = .5)
+
+# CV to tune lambda 
+set.seed(10)
+cv.ridge <- cv.glmnet(xTrain,yTrain,alpha=0)
+cv.lasso <- cv.glmnet(xTrain,yTrain,alpha=1)
+cv.elasticnet <- cv.glmnet(xTrain,yTrain,alpha=.5)
+
+bestlam.ridge <- cv.ridge$lambda.min
+bestlam.lasso <- cv.lasso$lambda.min
+bestlam.elasticnet <- cv.elasticnet$lambda.min
+
+# calculate RMSE 
+ridge.pred <- predict(lm.ridge, newx=xTest, s=bestlam.ridge)
+lasso.pred <- predict(lm.lasso, newx=xTest, s=bestlam.lasso)
+
+mseRidge <- mean((ridge.pred - yTest)^2)
+mseLasso <- mean((lasso.pred - yTest)^2)
+
+sprintf("Ridge prediction error is: %f", sqrt(mseRidge))
+sprintf("Lasso prediction error is: %f", sqrt(mseLasso))
+
+## Tune Alpha for Elastic Net 
+for (i in 1:9) {
+  assign(paste("fit", i, sep=""), cv.glmnet(xTrain, yTrain, type.measure="mse", 
+                                            alpha=i/10, family="gaussian"))
+}
+
+yhat1 <- predict(fit1, s=fit1$lambda.1se, newx=xTest)
+yhat2 <- predict(fit2, s=fit2$lambda.1se, newx=xTest)
+yhat3 <- predict(fit3, s=fit3$lambda.1se, newx=xTest)
+yhat4 <- predict(fit4, s=fit4$lambda.1se, newx=xTest)
+yhat5 <- predict(fit5, s=fit5$lambda.1se, newx=xTest)
+yhat6 <- predict(fit6, s=fit6$lambda.1se, newx=xTest)
+yhat7 <- predict(fit7, s=fit7$lambda.1se, newx=xTest)
+yhat8 <- predict(fit8, s=fit8$lambda.1se, newx=xTest)
+yhat9 <- predict(fit9, s=fit9$lambda.1se, newx=xTest)
+
+mse1 <- mean((yTest - yhat1)^2)
+mse2 <- mean((yTest - yhat2)^2)
+mse3 <- mean((yTest - yhat3)^2)
+mse4 <- mean((yTest - yhat4)^2)
+mse5 <- mean((yTest - yhat5)^2)
+mse6 <- mean((yTest - yhat6)^2)
+mse7 <- mean((yTest - yhat7)^2)
+mse8 <- mean((yTest - yhat8)^2)
+mse9 <- mean((yTest - yhat9)^2)
+
+minRMSE <- min(c(sqrt(mse1),sqrt(mse2),sqrt(mse3),sqrt(mse4),sqrt(mse5),sqrt(mse6),sqrt(mse7),sqrt(mse8),sqrt(mse9)))
+alpha <- which.min(c(sqrt(mse1),sqrt(mse2),sqrt(mse3),sqrt(mse4),sqrt(mse5),sqrt(mse6),sqrt(mse7),sqrt(mse8),sqrt(mse9)))
+
+# sprintf("The min RMSE for the elastic net is: %f", minRMSE)
+# sprintf("Corresponding Alpha value is: %f", alpha/10)
+
+lm.elasticnet <- glmnet(xTrain, yTrain, alpha = alpha/10)
+net.pred <- predict(lm.elasticnet, newx=xTest, s=bestlam.elasticnet)
+mseNet <- mean((net.pred - yTest)^2)
+sprintf("Elastic Net prediction error is: %f", sqrt(mseNet))
+
+#---------------------------------------------------------------------
+
+# Plot predictions and residuals
+par(mfrow=c(1,1))
+
+jpeg('OLS_Residuals.jpg')
+plot(lm.predict - test$logResponse, ylim=c(-10,10), main='OLS Residuals')
+abline(0,0)
+dev.off()
+
+jpeg('OLS_Residuals_Hist.jpg')
+hist(lm.predict - test$logResponse, main='OLS Residuals', xlim=c(-10,10), breaks=50)
+dev.off()
+
+jpeg('Ridge_Residuals.jpg')
+plot(ridge.pred - yTest, ylim=c(-10,10), main='Ridge Residuals')
+abline(0,0)
+dev.off()
+
+jpeg('Ridge_Residuals_Hist.jpg')
+hist(ridge.pred - yTest, main='Ridge Residuals', xlim=c(-10,10), breaks=50)
+dev.off()
+
+jpeg('Lasso_Residuals.jpg')
+plot(lasso.pred - yTest, ylim=c(-10,10), main='Lasso Residuals')
+abline(0,0)
+dev.off()
+
+jpeg('Lasso_Residuals_Hist.jpg')
+hist(lasso.pred - yTest, main='Lasso Residuals', xlim=c(-10,10), breaks=50)
+dev.off()
+
+jpeg('ENet_Residuals.jpg')
+plot(net.pred - yTest, ylim=c(-10,10), main='Elastic Net Residuals')
+abline(0,0)
+dev.off()
+
+jpeg('ENet_Residuals_Hist.jpg')
+hist(net.pred - yTest, main='Elastic Net Residuals', xlim=c(-10,10), breaks=50)
+dev.off()
+
+#---------------------------------------------------------------------
 
 
-# Linear models: OLS, Ridge, Lasso, Elastic Net
 
-lm.model <- lm(Response ~ ., data=merged, na.action = na.omit)
+## Subset Selection
+m.lower <- lm(logResponse ~ 1, data=train, na.action = na.omit)
+m.upper <- lm(logResponse ~ ., data=train, na.action = na.omit)
 
+m.hybrid <- step(m.lower, scope=list(lower=m.lower, upper=m.upper), direction="forward", na.action = na.omit)
+
+y.pred.hybrid <- predict(m.hybrid, data.frame(scale(test_set)))
+RMS.pred.hybrid <- sqrt(mean((y.pred.hybrid - test_response)^2))
+
+
+#---------------------------------------------------------------------
 # UNSUPERVISED
-
 # K-means clustering
 # PCA
