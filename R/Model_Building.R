@@ -5,6 +5,9 @@ rm(list=ls())
 library(glmnet)
 library(leaps)
 library(MASS)
+library(ISLR)
+library(pls)
+library(randomForest)
 
 #---------------------------------------------------------------------
 
@@ -228,19 +231,39 @@ dev.off()
 
 #---------------------------------------------------------------------
 
-
-
 ## Subset Selection
-m.lower <- lm(logResponse ~ 1, data=train, na.action = na.omit)
-m.upper <- lm(logResponse ~ ., data=train, na.action = na.omit)
 
-m.hybrid <- step(m.lower, scope=list(lower=m.lower, upper=m.upper), direction="forward", na.action = na.omit)
+subsetDF <- as.data.frame(cbind(xTrain, yTrain))
+m.lower <- lm(yTrain ~ 1, data=subsetDF)
+m.upper <- lm(yTrain ~ ., data=subsetDF)
 
-y.pred.hybrid <- predict(m.hybrid, data.frame(scale(test_set)))
-RMS.pred.hybrid <- sqrt(mean((y.pred.hybrid - test_response)^2))
+m.hybrid <- step(m.lower, scope=list(lower=m.lower, upper=m.upper), direction="both", na.action = na.omit)
 
+y.pred.hybrid <- predict(m.hybrid,new =xTest)
+RMS.pred.hybrid <- sqrt(mean((y.pred.hybrid - yTest)^2))
+
+# PCR
+set.seed(1)
+pcr.model <- pcr(logResponse ~ ., data=train, scale=TRUE, validation="CV")
+validationplot(pcr,val.type="MSEP")
+pcr.pred <- predict(pcr,test,ncomp=5)
+mse.pcr <- (pcr.pred-test$logResponse)^2
+rmse.pcr <- sqrt(mean(temp[!is.na(mse.pcr)]))
+
+# Random Forest
+
+bag.model <- randomForest(yTrain~.,data=subsetDF,mtry=10,importance=TRUE)
+bag.model
+
+preds.bag <- predict(bag.model,newdata=xTest)
+sqrt(mean((preds.bag-yTest)^2))
+
+importance(bag.model)
+varImpPlot(bag.model, main = 'Variable Importance')
 
 #---------------------------------------------------------------------
+
 # UNSUPERVISED
+
 # K-means clustering
 # PCA
