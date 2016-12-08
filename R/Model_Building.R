@@ -2,12 +2,19 @@
 rm(list=ls())
 
 # Load libraries
+library(devtools)
+install_github("ggbiplot", "vqv")
+library(ggbiplot)
+library(ggplot2)
 library(glmnet)
 library(leaps)
 library(MASS)
 library(ISLR)
 library(pls)
 library(randomForest)
+library(reshape2)
+
+
 
 #---------------------------------------------------------------------
 
@@ -234,24 +241,23 @@ dev.off()
 ## Subset Selection
 
 subsetDF <- as.data.frame(cbind(xTrain, yTrain))
-m.lower <- lm(yTrain ~ 1, data=subsetDF)
-m.upper <- lm(yTrain ~ ., data=subsetDF)
-
-m.hybrid <- step(m.lower, scope=list(lower=m.lower, upper=m.upper), direction="both", na.action = na.omit)
-
-y.pred.hybrid <- predict(m.hybrid,new =xTest)
-RMS.pred.hybrid <- sqrt(mean((y.pred.hybrid - yTest)^2))
+# m.lower <- lm(yTrain ~ 1, data=subsetDF)
+# m.upper <- lm(yTrain ~ ., data=subsetDF)
+# 
+# m.hybrid <- step(m.lower, scope=list(lower=m.lower, upper=m.upper), direction="both", na.action = na.omit)
+# 
+# y.pred.hybrid <- predict(m.hybrid,new =xTest)
+# RMS.pred.hybrid <- sqrt(mean((y.pred.hybrid - yTest)^2))
 
 # PCR
-set.seed(1)
-pcr.model <- pcr(logResponse ~ ., data=train, scale=TRUE, validation="CV")
-validationplot(pcr,val.type="MSEP")
-pcr.pred <- predict(pcr,test,ncomp=5)
-mse.pcr <- (pcr.pred-test$logResponse)^2
-rmse.pcr <- sqrt(mean(temp[!is.na(mse.pcr)]))
+# set.seed(1)
+# pcr.model <- pcr(logResponse ~ ., data=train, scale=TRUE, validation="CV")
+# validationplot(pcr,val.type="MSEP")
+# pcr.pred <- predict(pcr,test,ncomp=5)
+# mse.pcr <- (pcr.pred-test$logResponse)^2
+# rmse.pcr <- sqrt(mean(temp[!is.na(mse.pcr)]))
 
 # Random Forest
-
 bag.model <- randomForest(yTrain~.,data=subsetDF,mtry=10,importance=TRUE)
 bag.model
 
@@ -261,9 +267,97 @@ sqrt(mean((preds.bag-yTest)^2))
 importance(bag.model)
 varImpPlot(bag.model, main = 'Variable Importance')
 
+jpeg('RF_Residuals.jpg')
+hist(preds.bag - yTest, breaks=100, xlab='Residual', main='Random Forest Residuals')
+dev.off()
+
+# Plot learning curves for Random Forest
+trainSize <- seq(0.05,0.95,0.05)
+training_error <- c()
+cv_error <- c()
+
+for (size in trainSize) {
+  print (size)
+  
+  sampleInd <- sample(1:nrow(design), size*nrow(design))
+  xTrain <- Design[sampleInd,]
+  xTest <- Design[-sampleInd,]
+  yTrain <- Response[sampleInd]
+  yTest <- Response[-sampleInd]
+  
+  subsetDF <- as.data.frame(cbind(xTrain, yTrain))
+  
+  bag.model <- randomForest(yTrain~.,data=subsetDF,mtry=10,importance=TRUE)
+  train_preds.bag <- predict(bag.model,newdata=xTrain)
+  test_preds.bag <- predict(bag.model,newdata=xTest)
+  
+  training_error <- cbind(training_error, sqrt(mean((train_preds.bag-yTrain)^2)))
+  cv_error <- cbind(cv_error, sqrt(mean((test_preds.bag-yTest)^2)))
+}
+
+jpeg('RF_LearningCurve.jpg')
+plot(trainSize, training_error, xlab='Training Size Fraction', ylab='Prediction Error', 
+     ylim=c(0,2), type='l', lwd=2.5, col='blue', main='Learning Curve for Random Forest')
+lines(trainSize, cv_error[1,], lwd=2.5, col='green')
+legend('topright',legend=c('Training Error', 'Test Error'),lty=c(1,1),lwd=c(2.5,2.5),col=c('blue','green'))
+dev.off()
+
+learning_curve_table <- as.data.frame(rbind(training_error, cv_error))
+names(learning_curve_table) <- as.character(seq(0.05,0.95,0.05))
+write.csv(learning_curve_table, '~/Documents/Stanford/CS229/CS229-Project/CleanData/RF_learning_rate_table.csv')
+
+#---------------------------------------------------------------------
+
+# Correlation matrix for k chosen predictors
+Predictors <- c('TotalPop','MedianAge','MalePop','RaceWhite','RaceBlack','EthnHispanic','HousingVacantunits')
+Corr_pred <- cbind(xTrain[,which(colnames(xTrain) %in% Predictors)], yTrain)
+colnames(Corr_pred)[ncol(Corr_pred)] <- 'log(Crime Rate)'
+cormat <- round(cor(Corr_pred),2)
+melted_cormat <- melt(cormat)
+
+ggheatmap <- ggplot(melted_cormat, aes(Var2, Var1, fill = value))+
+  geom_tile(color = "white")+
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Pearson\nCorrelation") +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+                                   size = 12, hjust = 1))+
+  coord_fixed()
+
+# Print the heatmap
+jpeg('Predictor_heatmap.jpg')
+print(ggheatmap)
+dev.off()
+
 #---------------------------------------------------------------------
 
 # UNSUPERVISED
 
 # K-means clustering
+# cols_to_ignore <- c('City','Response', 'logResponse')
+unsupervised <- na.omit(merged[,names(merged) %in% Predictors])
+
+n_clusters <- 3
+unsupervised$cluster <- kmeans(unsupervised, centers=n_clusters)$cluster
+
+# Plot distribution of log crime rates for each cluster
+
+
 # PCA
+merged.pca <- prcomp(unsupervised, center=TRUE, scale.=TRUE)
+summary(merged.pca)
+
+plot(merged.pca, type='l')
+
+unsupervised$cluster <- as.factor(unsupervised$cluster)
+g <- ggbiplot(merged.pca, obs.scale = 1, var.scale = 1, 
+              groups = unsupervised$cluster, ellipse = TRUE, 
+              circle = TRUE)
+g <- g + scale_color_discrete(name = '')
+g <- g + theme(legend.direction = 'horizontal', 
+               legend.position = 'top')
+
+jpeg('PCA_VarPlot.jpg')
+print(g)
+dev.off()
