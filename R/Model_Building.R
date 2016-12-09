@@ -9,12 +9,12 @@ library(ggplot2)
 library(glmnet)
 library(leaps)
 library(MASS)
+library(mboost)
 library(ISLR)
 library(pls)
 library(randomForest)
 library(reshape2)
-
-
+library(splines)
 
 #---------------------------------------------------------------------
 
@@ -107,7 +107,7 @@ sprintf("Baseline prediction error is: %f",lm.rmse)
 # plot(lm.model)
 
 ## (2) Poisson GLM to Response 
-glm.model <- glm(Response ~ ., data = trainR, family=poisson, na.action = na.omit)
+glm.model <- glm(Response ~ ., data = trainR, family='poisson', na.action = na.omit)
 glm.predict <- predict(glm.model, newdata = testR)
 
 # Calculate RMSE
@@ -238,24 +238,7 @@ dev.off()
 
 #---------------------------------------------------------------------
 
-## Subset Selection
-
 subsetDF <- as.data.frame(cbind(xTrain, yTrain))
-# m.lower <- lm(yTrain ~ 1, data=subsetDF)
-# m.upper <- lm(yTrain ~ ., data=subsetDF)
-# 
-# m.hybrid <- step(m.lower, scope=list(lower=m.lower, upper=m.upper), direction="both", na.action = na.omit)
-# 
-# y.pred.hybrid <- predict(m.hybrid,new =xTest)
-# RMS.pred.hybrid <- sqrt(mean((y.pred.hybrid - yTest)^2))
-
-# PCR
-# set.seed(1)
-# pcr.model <- pcr(logResponse ~ ., data=train, scale=TRUE, validation="CV")
-# validationplot(pcr,val.type="MSEP")
-# pcr.pred <- predict(pcr,test,ncomp=5)
-# mse.pcr <- (pcr.pred-test$logResponse)^2
-# rmse.pcr <- sqrt(mean(temp[!is.na(mse.pcr)]))
 
 # Random Forest
 bag.model <- randomForest(yTrain~.,data=subsetDF,mtry=10,importance=TRUE)
@@ -306,6 +289,101 @@ learning_curve_table <- as.data.frame(rbind(training_error, cv_error))
 names(learning_curve_table) <- as.character(seq(0.05,0.95,0.05))
 write.csv(learning_curve_table, '~/Documents/Stanford/CS229/CS229-Project/CleanData/RF_learning_rate_table.csv')
 
+# GBM
+boosted.model <- glmboost(yTrain ~ ., data = subsetDF, control = boost_control(mstop = 1000))
+coef(boosted.model, off2int=TRUE)
+
+# Tune number of iterations
+cvm <- cvrisk(boosted.model)
+opt.iters <- which.min(apply(cvm, 2, mean))[[1]]
+
+jpeg('Boosting_tuning.jpeg')
+plot(cvm, main='Optimal Boosting Iterations using CV')
+dev.off()
+
+boosted.model <- glmboost(yTrain ~ ., data = subsetDF, control = boost_control(mstop = opt.iters))
+boosted.pred <- predict(boosted.model, newdata=as.data.frame(xTest))
+boosted.mse <- mean(na.omit(yTest - boosted.pred)^2)
+boosted.rmse <- sqrt(boosted.mse)
+sprintf("Boosting prediction error is: %f", boosted.rmse)
+
+# Remove linear dependencies
+remove_idx <- which(names(subsetDF) == 'FemalePop')
+reduced_subset <- subsetDF[,-remove_idx]
+
+
+best_subset <- regsubsets(yTrain ~., data=reduced_subset, nbest=1, nvmax=NULL, 
+                          force.in=NULL, force.out=NULL, method = "forward")
+summary.out <- summary(best_subset)
+
+vars_to_keep <- seq(1,40,1)
+rmse_vec <- rep(0,length(vars_to_keep))
+
+# Grid search to optimize number of parameters to keep
+for (i in vars_to_keep) {
+  
+  rel_features <- names(which(summary.out$which[i,] == TRUE))[-1]
+  subset_train <- reduced_subset[,which(names(reduced_subset) %in% c(rel_features,'yTrain'))]
+  subset_test <- as.data.frame(xTest[,which(colnames(xTest) %in% names(subset_train))])
+  names(subset_test) <- names(subset_train)[-length(names(subset_train))]
+  
+  cv.lm.model <- lm(yTrain ~ ., data=subset_train, na.action = na.omit)
+  cv.lm.predict <- predict(cv.lm.model, newdata=subset_test)
+  cv.lm.rmse <- sqrt(mean(na.omit(yTest - cv.lm.predict)^2))
+  rmse_vec[i] <- cv.lm.rmse
+}
+
+best_subset_size <- which.min(rmse_vec)
+rel_features <- names(which(summary.out$which[best_subset_size,] == TRUE))[-1]
+
+rel_vars <- reduced_subset[,which(names(reduced_subset) %in% c(rel_features, 'yTrain'))]
+rel_subset <- regsubsets(yTrain ~., data=rel_vars, nbest=1, nvmax=NULL, force.in=NULL, force.out=NULL, method = "forward")
+
+# Plot best subset size
+jpeg('Best_Subset_Size.jpeg')
+plot(rmse_vec, xlab='Number of features', ylab='RMSE', type='l', col='blue', ylim=c(0.85, 1.1), main='RMSE vs Subset Size for OLS', lty=1, lwd=2.5)
+abline(min(rmse_vec), 0, lty=3)
+dev.off()
+
+# Linear vs. non-linear models
+nl_y <- rel_vars[,ncol(rel_vars)]
+nl_x <- as.matrix(rel_vars[,-ncol(rel_vars)])
+
+# Linear
+lm.fit <- lm(nl_y~nl_x)
+
+# Polynomial
+poly.fit3 <- lm(nl_y ~ poly(nl_x,3))
+
+# Natural spline
+nat_spline.fit3 <- lm(nl_y ~ ns(nl_x, 3))
+
+# Smoothing splines
+spline.fit <- smooth.spline(nl_y ~ nl_x, nknots=15)
+
+
+
+
+
+
+# m.lower <- lm(yTrain ~ 1, data=subsetDF)
+# m.upper <- lm(yTrain ~ ., data=subsetDF)
+# 
+# m.hybrid <- step(m.lower, scope=list(lower=m.lower, upper=m.upper), direction="both", na.action = na.omit)
+# 
+# y.pred.hybrid <- predict(m.hybrid,new =xTest)
+# RMS.pred.hybrid <- sqrt(mean((y.pred.hybrid - yTest)^2))
+
+# PCR
+# set.seed(1)
+# pcr.model <- pcr(logResponse ~ ., data=train, scale=TRUE, validation="CV")
+# validationplot(pcr,val.type="MSEP")
+# pcr.pred <- predict(pcr,test,ncomp=5)
+# mse.pcr <- (pcr.pred-test$logResponse)^2
+# rmse.pcr <- sqrt(mean(temp[!is.na(mse.pcr)]))
+
+
+
 #---------------------------------------------------------------------
 
 # Correlation matrix for k chosen predictors
@@ -347,6 +425,7 @@ unsupervised$cluster <- kmeans(unsupervised, centers=n_clusters)$cluster
 # PCA
 merged.pca <- prcomp(unsupervised, center=TRUE, scale.=TRUE)
 summary(merged.pca)
+loadings(merged.pca)
 
 plot(merged.pca, type='l')
 

@@ -21,6 +21,12 @@ setwd('~/Documents/Stanford/CS229/CS229-Project/RawData/NewYork/')
 
 # Load data
 crimes <- read.csv('NYPD_Complaint_Data_Historic_2010.csv', header=T, stringsAsFactors=F)
+violent_lookup <- read.csv('violent_lookup.csv', header=T, stringsAsFactors=F)
+
+crimes <- merge(crimes, violent_lookup, by.x='OFNS_DESC', by.y='type', all.x=T)
+# crimes <- crimes[which(crimes$class == 'Non'),]
+crimes <- crimes[which(crimes$class == 'Violent'),]
+
 crimes$Year <- substrRight(crimes$CMPLNT_FR_DT, 4)
 
 # Break up crimes by Borough (because of different shape files for each)
@@ -50,15 +56,15 @@ names(tract_QNS@data)  <- tolower(names(tract_QNS@data))
 names(tract_STNI@data) <- tolower(names(tract_STNI@data))
 
 # Create smaller dataframes with relevant columns only
-crimes_BRNX <- data.frame(date=crimes_BRNX$CMPLNT_FR_DT, year=crimes_BRNX$Year, type=crimes_BRNX$OFNS_DESC,
+crimes_BRNX <- data.frame(date=crimes_BRNX$CMPLNT_FR_DT, year=crimes_BRNX$Year,
                           latitude=crimes_BRNX$Latitude, longitude=crimes_BRNX$Longitude)
-crimes_BKLN <- data.frame(date=crimes_BKLN$CMPLNT_FR_DT, year=crimes_BKLN$Year, type=crimes_BKLN$OFNS_DESC,
+crimes_BKLN <- data.frame(date=crimes_BKLN$CMPLNT_FR_DT, year=crimes_BKLN$Year,
                           latitude=crimes_BKLN$Latitude, longitude=crimes_BKLN$Longitude)
-crimes_MHTN <- data.frame(date=crimes_MHTN$CMPLNT_FR_DT, year=crimes_MHTN$Year, type=crimes_MHTN$OFNS_DESC,
+crimes_MHTN <- data.frame(date=crimes_MHTN$CMPLNT_FR_DT, year=crimes_MHTN$Year,
                           latitude=crimes_MHTN$Latitude, longitude=crimes_MHTN$Longitude)
-crimes_QNS  <- data.frame(date=crimes_QNS$CMPLNT_FR_DT,  year=crimes_QNS$Year,  type=crimes_QNS$OFNS_DESC,
+crimes_QNS  <- data.frame(date=crimes_QNS$CMPLNT_FR_DT,  year=crimes_QNS$Year,
                           latitude=crimes_QNS$Latitude,  longitude=crimes_QNS$Longitude)
-crimes_STNI <- data.frame(date=crimes_STNI$CMPLNT_FR_DT, year=crimes_STNI$Year, type=crimes_STNI$OFNS_DESC,
+crimes_STNI <- data.frame(date=crimes_STNI$CMPLNT_FR_DT, year=crimes_STNI$Year,
                           latitude=crimes_STNI$Latitude, longitude=crimes_STNI$Longitude)
 
 # Only retain complete cases (remove NAs)
@@ -69,19 +75,19 @@ crimes_QNS  <- crimes_QNS[complete.cases(crimes_QNS), ]
 crimes_STNI <- crimes_STNI[complete.cases(crimes_STNI), ]
 
 crimes_BRNX <- SpatialPointsDataFrame(coords=crimes_BRNX[, c('longitude', 'latitude')],
-                                     data=crimes_BRNX[, c('year', 'date', 'type')],
+                                     data=crimes_BRNX[, c('year', 'date')],
                                      proj4string=CRS('+proj=longlat +datum=WGS84'))
 crimes_BKLN <- SpatialPointsDataFrame(coords=crimes_BKLN[, c('longitude', 'latitude')],
-                                      data=crimes_BKLN[, c('year', 'date', 'type')],
+                                      data=crimes_BKLN[, c('year', 'date')],
                                       proj4string=CRS('+proj=longlat +datum=WGS84'))
 crimes_MHTN <- SpatialPointsDataFrame(coords=crimes_MHTN[, c('longitude', 'latitude')],
-                                      data=crimes_MHTN[, c('year', 'date', 'type')],
+                                      data=crimes_MHTN[, c('year', 'date')],
                                       proj4string=CRS('+proj=longlat +datum=WGS84'))
 crimes_QNS  <- SpatialPointsDataFrame(coords=crimes_QNS[, c('longitude', 'latitude')],
-                                      data=crimes_QNS[, c('year', 'date', 'type')],
+                                      data=crimes_QNS[, c('year', 'date')],
                                       proj4string=CRS('+proj=longlat +datum=WGS84'))
 crimes_STNI <- SpatialPointsDataFrame(coords=crimes_STNI[, c('longitude', 'latitude')],
-                                      data=crimes_STNI[, c('year', 'date', 'type')],
+                                      data=crimes_STNI[, c('year', 'date')],
                                       proj4string=CRS('+proj=longlat +datum=WGS84'))
 
 # Spatial overlay to identify Census polygon in which each coordinate falls
@@ -121,4 +127,5 @@ result_STNI$city <- rep('StatenIsland', nrow(result_STNI))
 
 result <- data.frame(rbind(result_BRNX, result_BKLN, result_MHTN, result_QNS, result_STNI))
 
-write.csv(result, '~/Documents/Stanford/CS229/CS229-Project/CleanData/NewYork_clean.csv')
+# write.csv(result, '~/Documents/Stanford/CS229/CS229-Project/CleanData/NewYork_nonviolent.csv')
+write.csv(result, '~/Documents/Stanford/CS229/CS229-Project/CleanData/NewYork_violent.csv')
