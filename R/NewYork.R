@@ -24,8 +24,8 @@ crimes <- read.csv('NYPD_Complaint_Data_Historic_2010.csv', header=T, stringsAsF
 violent_lookup <- read.csv('violent_lookup.csv', header=T, stringsAsFactors=F)
 
 crimes <- merge(crimes, violent_lookup, by.x='OFNS_DESC', by.y='type', all.x=T)
-# crimes <- crimes[which(crimes$class == 'Non'),]
-crimes <- crimes[which(crimes$class == 'Violent'),]
+crimes <- crimes[which(crimes$class == 'Non'),]
+# crimes <- crimes[which(crimes$class == 'Violent'),]
 
 crimes$Year <- substrRight(crimes$CMPLNT_FR_DT, 4)
 
@@ -127,5 +127,5 @@ result_STNI$city <- rep('StatenIsland', nrow(result_STNI))
 
 result <- data.frame(rbind(result_BRNX, result_BKLN, result_MHTN, result_QNS, result_STNI))
 
-# write.csv(result, '~/Documents/Stanford/CS229/CS229-Project/CleanData/NewYork_nonviolent.csv')
-write.csv(result, '~/Documents/Stanford/CS229/CS229-Project/CleanData/NewYork_violent.csv')
+write.csv(result, '~/Documents/Stanford/CS229/CS229-Project/CleanData/NewYork_nonviolent.csv')
+# write.csv(result, '~/Documents/Stanford/CS229/CS229-Project/CleanData/NewYork_violent.csv')
