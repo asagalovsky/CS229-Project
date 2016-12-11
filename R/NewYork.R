@@ -2,10 +2,14 @@
 rm(list=ls())
 
 # Load libraries
+library(geosphere)
+library(ggplot2)
+library(maptools)
 library(plyr)
 library(raster)
 library(rgdal)
 library(sp)
+library(stringr)
 
 #---------------------------------------------------------------------
 
@@ -21,10 +25,10 @@ setwd('~/Documents/Stanford/CS229/CS229-Project/RawData/NewYork/')
 
 # Load data
 crimes <- read.csv('NYPD_Complaint_Data_Historic_2010.csv', header=T, stringsAsFactors=F)
-violent_lookup <- read.csv('violent_lookup.csv', header=T, stringsAsFactors=F)
+# violent_lookup <- read.csv('violent_lookup.csv', header=T, stringsAsFactors=F)
 
-crimes <- merge(crimes, violent_lookup, by.x='OFNS_DESC', by.y='type', all.x=T)
-crimes <- crimes[which(crimes$class == 'Non'),]
+# crimes <- merge(crimes, violent_lookup, by.x='OFNS_DESC', by.y='type', all.x=T)
+# crimes <- crimes[which(crimes$class == 'Non'),]
 # crimes <- crimes[which(crimes$class == 'Violent'),]
 
 crimes$Year <- substrRight(crimes$CMPLNT_FR_DT, 4)
@@ -92,40 +96,48 @@ crimes_STNI <- SpatialPointsDataFrame(coords=crimes_STNI[, c('longitude', 'latit
 
 # Spatial overlay to identify Census polygon in which each coordinate falls
 crimes_tract_BRNX <- over(x=crimes_BRNX, y=tract_BRNX)
-crimes_tract_BRNX <- data.frame(tract_name=crimes_tract_BRNX$namelsad10)
+crimes_tract_BRNX <- data.frame(tract_name=crimes_tract_BRNX$namelsad10, geoid10=crimes_tract_BRNX$geoid10)
 
 crimes_tract_BKLN <- over(x=crimes_BKLN, y=tract_BKLN)
-crimes_tract_BKLN <- data.frame(tract_name=crimes_tract_BKLN$namelsad10)
+crimes_tract_BKLN <- data.frame(tract_name=crimes_tract_BKLN$namelsad10, geoid10=crimes_tract_BKLN$geoid10)
 
 crimes_tract_MHTN <- over(x=crimes_MHTN, y=tract_MHTN)
-crimes_tract_MHTN <- data.frame(tract_name=crimes_tract_MHTN$namelsad10)
+crimes_tract_MHTN <- data.frame(tract_name=crimes_tract_MHTN$namelsad10, geoid10=crimes_tract_MHTN$geoid10)
 
 crimes_tract_QNS  <- over(x=crimes_QNS, y=tract_QNS)
-crimes_tract_QNS  <- data.frame(tract_name=crimes_tract_QNS$namelsad10)
+crimes_tract_QNS  <- data.frame(tract_name=crimes_tract_QNS$namelsad10, geoid10=crimes_tract_QNS$geoid10)
 
 crimes_tract_STNI <- over(x=crimes_STNI, y=tract_STNI)
-crimes_tract_STNI <- data.frame(tract_name=crimes_tract_STNI$namelsad10)
+crimes_tract_STNI <- data.frame(tract_name=crimes_tract_STNI$namelsad10, geoid10=crimes_tract_STNI$geoid10)
 
-# Add Census tract_MHTN data to crime dataset
+# Add Census data to crime dataset
 result_BRNX <- data.frame(crimes_BRNX@data, crimes_tract_BRNX)
 result_BKLN <- data.frame(crimes_BKLN@data, crimes_tract_BKLN)
 result_MHTN <- data.frame(crimes_MHTN@data, crimes_tract_MHTN)
 result_QNS  <- data.frame(crimes_QNS@data,  crimes_tract_QNS)
 result_STNI <- data.frame(crimes_STNI@data, crimes_tract_STNI)
 
-result_BRNX <- count(result_BRNX, c('tract_name'))
-result_BKLN <- count(result_BKLN, c('tract_name'))
-result_MHTN <- count(result_MHTN, c('tract_name'))
-result_QNS  <- count(result_QNS, c('tract_name'))
-result_STNI <- count(result_STNI, c('tract_name'))
+# result_BRNX <- count(result_BRNX, c('tract_name'))
+# result_BKLN <- count(result_BKLN, c('tract_name'))
+# result_MHTN <- count(result_MHTN, c('tract_name'))
+# result_QNS  <- count(result_QNS, c('tract_name'))
+# result_STNI <- count(result_STNI, c('tract_name'))
 
-result_BRNX$city <- rep('Bronx', nrow(result_BRNX))
-result_BKLN$city <- rep('Brooklyn', nrow(result_BKLN))
-result_MHTN$city <- rep('Manhattan', nrow(result_MHTN))
-result_QNS$city  <- rep('Queens', nrow(result_QNS))
-result_STNI$city <- rep('StatenIsland', nrow(result_STNI))
+# result_BRNX$city <- rep('Bronx', nrow(result_BRNX))
+# result_BKLN$city <- rep('Brooklyn', nrow(result_BKLN))
+# result_MHTN$city <- rep('Manhattan', nrow(result_MHTN))
+# result_QNS$city  <- rep('Queens', nrow(result_QNS))
+# result_STNI$city <- rep('StatenIsland', nrow(result_STNI))
+
+result_BRNX <- data.frame(table(result_BRNX$geoid10))
+result_BKLN <- data.frame(table(result_BKLN$geoid10))
+result_MHTN <- data.frame(table(result_MHTN$geoid10))
+result_QNS <- data.frame(table(result_QNS$geoid10))
+result_STNI <- data.frame(table(result_STNI$geoid10))
 
 result <- data.frame(rbind(result_BRNX, result_BKLN, result_MHTN, result_QNS, result_STNI))
+names(result) <- c('geoid10', 'Frequency')
 
-write.csv(result, '~/Documents/Stanford/CS229/CS229-Project/CleanData/NewYork_nonviolent.csv')
+# write.csv(result, '~/Documents/Stanford/CS229/CS229-Project/CleanData/NewYork_nonviolent.csv')
 # write.csv(result, '~/Documents/Stanford/CS229/CS229-Project/CleanData/NewYork_violent.csv')
+write.csv(result, '~/Documents/Stanford/CS229/CS229-Project/CleanData/NewYork_geoid.csv')

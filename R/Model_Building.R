@@ -69,6 +69,21 @@ jpeg('LogResponseHistogram.jpg')
 hist(merged$logResponse,breaks=100, xlab='Log Rate', main='Log Crime Rate')
 dev.off()
 
+jpeg('CrimeRate_Hist.jpeg')
+ggplot(data=merged, aes(merged$Response)) + 
+  geom_histogram(breaks=seq(0, 0.8, by=0.02), 
+                 col="white", 
+                 aes(fill=..count..)) +
+                 labs(x="Crime Rate", y="Count")
+dev.off()
+
+jpeg('LogCrimeRate_Hist.jpeg')
+ggplot(data=merged, aes(merged$logResponse)) + 
+  geom_histogram(breaks=seq(-7, 1, by=0.2), 
+                 col="white", 
+                 aes(fill=..count..)) +
+                 labs(x="Log Crime Rate", y="Count")
+dev.off()
 #---------------------------------------------------------------------
 
 ## Modeling/Prediction - Formatting data
@@ -387,7 +402,8 @@ spline.fit <- smooth.spline(nl_y ~ nl_x, nknots=15)
 #---------------------------------------------------------------------
 
 # Correlation matrix for k chosen predictors
-Predictors <- c('TotalPop','MedianAge','MalePop','RaceWhite','RaceBlack','EthnHispanic','HousingVacantunits')
+Predictors <- c('FamilyhouseholdsHusbandwife','FamilyhouseholdsFemalehouseholder','TotalPop','RaceBlack', 
+                'NonfamilyhouseholdslivingaloneMale', 'TotalHousingUnits', 'RaceWhite')
 Corr_pred <- cbind(xTrain[,which(colnames(xTrain) %in% Predictors)], yTrain)
 colnames(Corr_pred)[ncol(Corr_pred)] <- 'log(Crime Rate)'
 cormat <- round(cor(Corr_pred),2)
@@ -419,8 +435,6 @@ unsupervised <- na.omit(merged[,names(merged) %in% Predictors])
 n_clusters <- 3
 unsupervised$cluster <- kmeans(unsupervised, centers=n_clusters)$cluster
 
-# Plot distribution of log crime rates for each cluster
-
 
 # PCA
 merged.pca <- prcomp(unsupervised, center=TRUE, scale.=TRUE)
@@ -440,3 +454,16 @@ g <- g + theme(legend.direction = 'horizontal',
 jpeg('PCA_VarPlot.jpg')
 print(g)
 dev.off()
+
+#---------------------------------------------------------------------
+
+model.name <- c('OLS','Ridge','Lasso','ENet','RF','GBM','GAM',
+                'RF (NYC)','w/ Classification','Augmented')
+RMSE <- c(1.124245, 0.908030, 0.899431, 0.897220, 0.692712, 0.892571, 0.9049774, 0.4909961, 0.5489236, 0.4334941)
+model.name <- factor(model.name,levels=unique(model.name))
+
+jpeg('Model_Improvement.jpeg')
+q <- qplot(model.name, RMSE, alpha=I(.5), geom='density', size=4, ylab="RMSE", ylim=c(0,1.2))
+q + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+dev.off()
+
